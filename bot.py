@@ -50,6 +50,9 @@ def main_menu():
         InlineKeyboardButton("أعضاء تيليجرام ($1.50)", callback_data="srv_2"),
         InlineKeyboardButton("متابعين إنستغرام ($3.00)", callback_data="srv_3")
     )
+    # ✨ إضافة زر القناة هنا
+    kb.add(InlineKeyboardButton("📢 قناتنا الرسمية", url="https://t.me/TurboRashq"))
+    
     return text, kb
 
 @bot.message_handler(commands=['start'])
