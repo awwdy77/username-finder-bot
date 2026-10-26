@@ -25,32 +25,30 @@ bot = telebot.TeleBot(BOT_TOKEN)
 user_states = {}
 ORDERS = {}
 
-# --- قائمة الخدمات (الأسعار الجديدة المخفضة) ---
+# --- قائمة الخدمات ---
 SERVICES = {
-    "1": {"name": "TikTok Followers", "name_ar": "متابعين تيك توك", "price_usd": 2.50},
-    "2": {"name": "Telegram Members", "name_ar": "أعضاء تيليجرام", "price_usd": 1.50},
-    "3": {"name": "Instagram Followers", "name_ar": "متابعين إنستغرام", "price_usd": 3.00}
+    "1": {"name": "متابعين تيك توك", "price_usd": 2.50},
+    "2": {"name": "أعضاء تيليجرام", "price_usd": 1.50},
+    "3": {"name": "متابعين إنستغرام", "price_usd": 3.00}
 }
 
 # --- القائمة الرئيسية ---
 def main_menu():
     text = (
-        "Welcome to **Turbo Rashq** | مرحباً بك في تربو رشق\n"
+        "👑 مرحباً بك في **تربو رشق**\n"
         "━━━━━━━━━━━━━━━━━━━━\n\n"
-        "The premier provider for social media growth.\n"
         "المزود الأول لخدمات النمو في وسائل التواصل الاجتماعي.\n\n"
-        "• Fast Delivery (تنفيذ سريع)\n"
-        "• High Quality (جودة عالية)\n"
-        "• 24/7 Support (دعم فني)\n\n"
-        "Please select a service to continue:\n"
+        "• تنفيذ سريع ⚡\n"
+        "• جودة عالية 💎\n"
+        "• دعم فني 24/7 📞\n\n"
         "الرجاء اختيار الخدمة للمتابعة:"
     )
     
     kb = InlineKeyboardMarkup(row_width=1)
     kb.add(
-        InlineKeyboardButton("TikTok Followers ($2.50) | متابعين تيك توك", callback_data="srv_1"),
-        InlineKeyboardButton("Telegram Members ($1.50) | أعضاء تيليجرام", callback_data="srv_2"),
-        InlineKeyboardButton("Instagram Followers ($3.00) | متابعين إنستغرام", callback_data="srv_3")
+        InlineKeyboardButton("متابعين تيك توك ($2.50)", callback_data="srv_1"),
+        InlineKeyboardButton("أعضاء تيليجرام ($1.50)", callback_data="srv_2"),
+        InlineKeyboardButton("متابعين إنستغرام ($3.00)", callback_data="srv_3")
     )
     return text, kb
 
@@ -71,11 +69,9 @@ def handle_service(call):
     bot.answer_callback_query(call.id)
     
     msg = bot.edit_message_text(
-        f"Selected Service: **{service['name']}**\n"
-        f"الخدمة المختارة: **{service['name_ar']}**\n"
-        f"Price per 1000: **${service['price_usd']}**\n"
+        f"الخدمة المختارة: **{service['name']}**\n"
+        f"السعر لكل 1000: **${service['price_usd']}**\n"
         f"━━━━━━━━━━━━━━━━━━━━\n\n"
-        f"Please send the target link (Profile or Channel):\n"
         f"الرجاء إرسال الرابط (الحساب أو القناة):",
         chat_id=chat_id, 
         message_id=call.message.message_id,
@@ -87,16 +83,14 @@ def handle_service(call):
 def handle_link(message):
     chat_id = message.chat.id
     if chat_id not in user_states:
-        bot.reply_to(message, "Session expired. Please /start again.")
+        bot.reply_to(message, "انتهت الجلسة. الرجاء إرسال /start للبدء من جديد.")
         return
     
     user_states[chat_id]["link"] = message.text
-    service = user_states[chat_id]["service"]
     
     msg = bot.reply_to(
         message, 
-        f"Link saved: `{message.text}`\n\n"
-        f"Please enter the quantity (Min: 100, e.g., 1000):\n"
+        f"تم حفظ الرابط: `{message.text}`\n\n"
         f"الرجاء إدخال الكمية المطلوبة (الحد الأدنى 100، مثال: 1000):", 
         parse_mode="Markdown"
     )
@@ -106,16 +100,16 @@ def handle_link(message):
 def handle_quantity(message):
     chat_id = message.chat.id
     if chat_id not in user_states:
-        bot.reply_to(message, "Session expired. Please /start again.")
+        bot.reply_to(message, "انتهت الجلسة. الرجاء إرسال /start للبدء من جديد.")
         return
     
     try:
         qty = int(message.text)
         if qty < 100: 
-            bot.reply_to(message, "Minimum quantity is 100. / الحد الأدنى للكمية هو 100.")
+            bot.reply_to(message, "الحد الأدنى للكمية هو 100.")
             return
     except ValueError:
-        bot.reply_to(message, "Invalid number. Please send digits only. / أرسل أرقام فقط.")
+        bot.reply_to(message, "خطأ. الرجاء إرسال أرقام فقط.")
         return
 
     state = user_states[chat_id]
@@ -129,32 +123,30 @@ def handle_quantity(message):
         "customer_id": chat_id,
         "qty": qty,
         "service_name": service['name'],
-        "service_name_ar": service['name_ar'],
         "link": link,
         "price": total_price
     }
     
-    # تصميم الفاتورة الرسمية
+    # تصميم الفاتورة
     invoice_text = (
-        f"**INVOICE | فاتورة**\n"
+        f"🧾 **فاتورة**\n"
         f"━━━━━━━━━━━━━━━━━━━━\n"
-        f"Order ID | رقم الطلب: `#{order_id}`\n\n"
-        f"Service | الخدمة: {service['name']}\n"
-        f"Quantity | الكمية: {qty}\n"
-        f"Link | الرابط: `{link}`\n"
+        f"رقم الطلب: `#{order_id}`\n\n"
+        f"الخدمة: {service['name']}\n"
+        f"الكمية: {qty}\n"
+        f"الرابط: `{link}`\n"
         f"━━━━━━━━━━━━━━━━━━━━\n"
-        f"**Total | الإجمالي: {total_price:.2f} USDT**\n\n"
-        f"**Payment Method | طريقة الدفع:**\n"
-        f"Network | الشبكة: TON (The Open Network)\n"
-        f"Wallet | المحفظة:\n"
+        f"**الإجمالي: {total_price:.2f} USDT**\n\n"
+        f"**طريقة الدفع:**\n"
+        f"الشبكة: TON (The Open Network)\n"
+        f"المحفظة:\n"
         f"`{USDT_TON_WALLET}`\n\n"
-        f"⚠️ Please transfer the exact amount to the wallet above, then click 'Payment Completed'.\n"
-        f"يرجى تحويل المبلغ إلى المحفظة أعلاه، ثم الضغط على زر (تم الدفع)."
+        f"⚠️ يرجى تحويل المبلغ إلى المحفظة أعلاه، ثم الضغط على زر (تم الدفع)."
     )
     
     kb = InlineKeyboardMarkup()
-    kb.add(InlineKeyboardButton("Payment Completed | تم الدفع", callback_data=f"paid_{order_id}"))
-    kb.add(InlineKeyboardButton("Cancel | إلغاء", callback_data="cancel_order"))
+    kb.add(InlineKeyboardButton("✅ تم الدفع", callback_data=f"paid_{order_id}"))
+    kb.add(InlineKeyboardButton("❌ إلغاء", callback_data="cancel_order"))
     
     bot.reply_to(message, invoice_text, parse_mode="Markdown", reply_markup=kb)
     del user_states[chat_id]
@@ -163,7 +155,7 @@ def handle_quantity(message):
 @bot.callback_query_handler(func=lambda call: call.data == "cancel_order")
 def cancel_order(call):
     bot.answer_callback_query(call.id)
-    bot.edit_message_text("Order cancelled. | تم إلغاء الطلب.", chat_id=call.message.chat.id, message_id=call.message.message_id)
+    bot.edit_message_text("تم إلغاء الطلب.", chat_id=call.message.chat.id, message_id=call.message.message_id)
 
 # --- استلام الدفع وإشعار الأدمن ---
 @bot.callback_query_handler(func=lambda call: call.data.startswith("paid_"))
@@ -171,35 +163,34 @@ def handle_payment(call):
     order_id = call.data.split("_")[1]
     
     if order_id not in ORDERS:
-        bot.answer_callback_query(call.id, "Order not found. | الطلب غير موجود.", show_alert=True)
+        bot.answer_callback_query(call.id, "الطلب غير موجود.", show_alert=True)
         return
 
     order = ORDERS[order_id]
     
-    bot.answer_callback_query(call.id, "Processing... | جاري المراجعة...")
+    bot.answer_callback_query(call.id, "جاري المراجعة...")
     bot.edit_message_text(
-        "Order received. Waiting for admin approval.\n"
         "تم استلام الطلب. بانتظار تأكيد الإدارة.",
         chat_id=call.message.chat.id, 
         message_id=call.message.message_id
     )
     
-    # رسالة الأدمن (أنت)
+    # رسالة الأدمن
     admin_text = (
-        f"**NEW ORDER | طلب جديد**\n"
+        f"🔔 **طلب جديد**\n"
         f"━━━━━━━━━━━━━━━━━━━━\n"
-        f"Order: `#{order_id}`\n"
-        f"User ID: `{order['customer_id']}`\n"
-        f"Service: {order['service_name']}\n"
-        f"Quantity: {order['qty']}\n"
-        f"Link: `{order['link']}`\n"
-        f"Amount: {order['price']:.2f} USDT\n"
+        f"رقم الطلب: `#{order_id}`\n"
+        f"آي دي الزبون: `{order['customer_id']}`\n"
+        f"الخدمة: {order['service_name']}\n"
+        f"الكمية: {order['qty']}\n"
+        f"الرابط: `{order['link']}`\n"
+        f"المبلغ: {order['price']:.2f} USDT\n"
         f"━━━━━━━━━━━━━━━━━━━━\n"
-        f"Verify the payment in your TON wallet. If received, complete the order on the SMM panel and click Approve."
+        f"تأكد من وصول المبلغ في محفظتك، ونفذ الطلب في لوحة SMM، ثم اضغط تأكيد."
     )
     
     kb = InlineKeyboardMarkup()
-    kb.add(InlineKeyboardButton("Approve Order | تأكيد التنفيذ", callback_data=f"approve_{order_id}"))
+    kb.add(InlineKeyboardButton("✅ تأكيد التنفيذ", callback_data=f"approve_{order_id}"))
     
     bot.send_message(ADMIN_ID, admin_text, parse_mode="Markdown", reply_markup=kb)
 
@@ -210,26 +201,25 @@ def handle_approve(call):
     order = ORDERS.get(order_id)
     
     if not order:
-        bot.answer_callback_query(call.id, "Order not found.", show_alert=True)
+        bot.answer_callback_query(call.id, "الطلب غير موجود.", show_alert=True)
         return
         
     customer_id = order["customer_id"]
     
-    bot.answer_callback_query(call.id, "Approved")
-    bot.edit_message_text(f"Order #{order_id} marked as Completed.", chat_id=call.message.chat.id, message_id=call.message.message_id)
+    bot.answer_callback_query(call.id, "تم التأكيد")
+    bot.edit_message_text(f"تم تأكيد الطلب #{order_id} واكتماله.", chat_id=call.message.chat.id, message_id=call.message.message_id)
     
     try:
         bot.send_message(
             customer_id, 
-            f"✅ **Order Completed | تم اكتمال الطلب**\n"
+            f"✅ **تم اكتمال الطلب**\n"
             f"━━━━━━━━━━━━━━━━━━━━\n"
-            f"Your order `#{order_id}` has been processed successfully.\n"
-            f"تمت معالجة طلبك بنجاح. شكراً لاستخدامك تربو رشق."
+            f"طلبك `#{order_id}` تمت معالجته بنجاح.\n"
+            f"شكراً لاستخدامك تربو رشق."
         , parse_mode="Markdown")
     except Exception as e:
         print(f"Failed to message customer: {e}")
     
-    # مسح الطلب من الذاكرة بعد الانتهاء
     if order_id in ORDERS:
         del ORDERS[order_id]
 
