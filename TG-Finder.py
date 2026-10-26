@@ -2,52 +2,51 @@ import requests
 import random
 import os
 import time
+import threading
+from flask import Flask
 
-# قراءة التوكن والآي دي من إعدادات السيرفر (Render Environment Variables)
+# --- إعدادات البوت ---
 TOK = os.environ.get("BOT_TOKEN")
 ID = os.environ.get("CHAT_ID")
-
-if not TOK or not ID:
-    print("Error: BOT_TOKEN or CHAT_ID environment variables are missing.")
-    exit(1)
-
-# الحروف والأرقام المسموحة (بدون شرطات)
 CHARS = "abcdefghijklmnopqrstuvwxyz0123456789"
 
-print("—" * 60)
-print("Started searching for 5 & 6 character usernames (No Underscores)...")
+# --- خادم الويب الصغير (لإبقاء Render مستيقظاً) ---
+app = Flask(__name__)
 
-def check_username():
-    # اختيار عشوائي: إما 5 حروف أو 6 حروف
-    length = random.choice([5, 6])
-    
-    # توليد اليوزر (حروف وأرقام فقط)
-    username = "".join(random.choices(CHARS, k=length))
-    
-    try:
-        url = f"https://fragment.com/username/{username}"
-        # إرسال طلب للموقع
-        response = requests.get(url, timeout=10)
+@app.route('/')
+@app.route('/health')
+def health_check():
+    return "Bot is running!", 200
+
+# --- منطق البوت (نفس الكود السابق) ---
+def run_bot():
+    print("Started searching...")
+    while True:
+        try:
+            length = random.choice([5, 6])
+            username = "".join(random.choices(CHARS, k=length))
+            url = f"https://fragment.com/username/{username}"
+            response = requests.get(url, timeout=10)
+            
+            if len(response.text) < 20000:
+                print(f"[•] Good: {username}")
+                msg = f"< TELEGRAM USERNAME > Good\n[•] < @{username} > 🔸\n_______"
+                requests.get(f'https://api.telegram.org/bot{TOK}/sendMessage?chat_id={ID}&text={msg}')
+            else:
+                print(f"[✗] Bad: {username}")
+                
+        except Exception as e:
+            print(f"Error: {e}")
         
-        # إذا كان طول الصفحة أقل من 20000، يعني اليوزر متاح
-        if len(response.text) < 20000:
-            print(f"[•] Good: {username}")
-            
-            # رسالة تيليجرام
-            msg = f"""< TELEGRAM USERNAME > Good
-[•] < @{username} > 🔸
-_______
-BY : [ @KoXVX ]\nCHANNEL: [ @l27_0 ]"""
-            
-            # إرسال الإشعار عبر البوت
-            requests.get(f'https://api.telegram.org/bot{TOK}/sendMessage?chat_id={ID}&text={msg}')
-        else:
-            print(f"[✗] Bad: {username}")
-            
-    except Exception as e:
-        print(f"Request error: {e}")
+        time.sleep(3) # الانتظار 3 ثواني
 
-while True:
-    check_username()
-    # الانتظار 3 ثواني بين كل محاولة لتجنب الحظر
-    time.sleep(3)
+# --- تشغيل البوت في خيط منفصل ---
+if __name__ == "__main__":
+    # تشغيل البوت في الخلفية
+    bot_thread = threading.Thread(target=run_bot)
+    bot_thread.daemon = True
+    bot_thread.start()
+    
+    # تشغيل خادم الويب (الذي سيستقبل الـ ping)
+    port = int(os.environ.get("PORT", 10000))
+    app.run(host='0.0.0.0', port=port)
