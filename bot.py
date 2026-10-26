@@ -23,9 +23,9 @@ def health_check():
 # --- إعداد البوت ---
 bot = telebot.TeleBot(BOT_TOKEN)
 user_states = {}
+ORDERS = {} # لحفظ الطلبات مؤقتاً لتجنب خطأ طول الرابط في الأزرار
 
-# --- قائمة الخدمات (تم تعديل الأسعار بناءً على السوق) ---
-# ملاحظة: السعر هنا هو سعر البيع للزبون (أعلى من سعر الجملة لتكسب ربحاً)
+# --- قائمة الخدمات ---
 SERVICES = {
     "1": {"name": "متابعين تيك توك (1000)", "price_usd": 4.00}, 
     "2": {"name": "أعضاء قناة تيليجرام (1000)", "price_usd": 2.50}, 
@@ -34,7 +34,6 @@ SERVICES = {
 
 @bot.message_handler(commands=['start'])
 def send_welcome(message):
-    # ✨ هنا تضيف اسم قناتك أو الرابط (القاعدة)
     text = (
         "🚀 أهلاً بك في متجر الرشق الاحترافي!\n"
         "🔗 قناتنا الرسمية: @YourChannelHere\n" # <-- غير هذا إلى معرف قناتك
@@ -89,6 +88,14 @@ def handle_quantity(message):
     total_price = (service["price_usd"] / 1000) * qty
     order_id = str(chat_id)[-5:] + str(qty)[-3:]
     
+    # حفظ الطلب في الذاكرة لتجنب خطأ طول الرابط داخل زر تيليجرام
+    ORDERS[order_id] = {
+        "customer_id": chat_id,
+        "qty": qty,
+        "service_name": service['name'],
+        "link": link
+    }
+    
     # رسالة الدفع للزبون (USDT عبر شبكة TON)
     payment_text = (
         f"🧾 **فاتورة الطلب #{order_id}**\n\n"
@@ -104,20 +111,25 @@ def handle_quantity(message):
     )
     
     kb = InlineKeyboardMarkup()
-    kb.add(InlineKeyboardButton("✅ لقد قمت بالدفع", callback_data=f"paid_{order_id}_{chat_id}_{qty}_{service['name']}_{link}"))
+    # وضعنا فقط رقم الطلب في الزر لتجنب خطأ حجم البيانات
+    kb.add(InlineKeyboardButton("✅ لقد قمت بالدفع", callback_data=f"paid_{order_id}"))
     
     bot.reply_to(message, payment_text, parse_mode="Markdown", reply_markup=kb)
     del user_states[chat_id]
 
 @bot.callback_query_handler(func=lambda call: call.data.startswith("paid_"))
 def handle_payment(call):
-    # استخراج البيانات من الزر
-    data = call.data.split("_")
-    order_id = data[1]
-    customer_id = data[2]
-    qty = data[3]
-    service_name = data[4]
-    link = data[5]
+    order_id = call.data.split("_")[1]
+    
+    if order_id not in ORDERS:
+        bot.answer_callback_query(call.id, "❌ حدث خطأ، الطلب غير موجود.", show_alert=True)
+        return
+
+    order_data = ORDERS[order_id]
+    customer_id = order_data["customer_id"]
+    qty = order_data["qty"]
+    service_name = order_data["service_name"]
+    link = order_data["link"]
     
     bot.answer_callback_query(call.id, "⏳ جاري مراجعة الدفع...")
     bot.edit_message_text("⏳ تم استلام إشعار الدفع. يرجى الانتظار حتى يقوم المتجر بمراجعة التحويل وتنفيذ الطلب.", chat_id=customer_id, message_id=call.message.message_id)
@@ -154,7 +166,8 @@ def handle_approve(call):
         print(f"Failed to message customer: {e}")
 
 if __name__ == "__main__":
-    t = threading.Thread(target=bot.infinity_polling, kwargs={'non_stop': True})
+    # تم إصلاح هذا السطر هنا (حذف non_stop)
+    t = threading.Thread(target=bot.infinity_polling)
     t.daemon = True
     t.start()
     print("SMM Store Bot (USDT-TON) is polling...")
