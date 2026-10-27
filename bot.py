@@ -1,7 +1,6 @@
 import telebot
 import os
 import threading
-import re
 import requests
 import string
 import time
@@ -15,6 +14,9 @@ ADMIN_ID = os.environ.get("ADMIN_ID")
 if not BOT_TOKEN or not ADMIN_ID:
     print("Error: BOT_TOKEN or ADMIN_ID is missing.")
     exit(1)
+
+# تحويل ADMIN_ID إلى رقم صحيح للتحقق
+ADMIN_ID = int(ADMIN_ID)
 
 # --- إعداد خادم الويب ---
 app = Flask(__name__)
@@ -45,7 +47,6 @@ def generate_usernames():
 
 # --- دوال الفحص الثلاثي ---
 def check_telegram_api(username: str) -> bool:
-    """الفحص عبر البوت"""
     try:
         bot.get_chat(f"@{username}")
         return False  # مملوك
@@ -57,21 +58,17 @@ def check_telegram_api(username: str) -> bool:
         return False
 
 def check_tme_web(username: str) -> bool:
-    """الفحص عبر صفحة الويب t.me"""
     try:
         url = f"https://t.me/{username}"
         headers = {"User-Agent": "Mozilla/5.0"}
         response = requests.get(url, headers=headers, timeout=10)
-        
-        # إذا كانت الصفحة تحتوي على عنوان أو وصف، يعني الحساب موجود ومملوك
         if 'tgme_page_title' in response.text or 'tgme_page_extra' in response.text:
             return False # مملوك
         return True # متاح
     except Exception:
-        return False # في حال الخطأ نعتبره غير متاح للأمان
+        return False
 
 def check_fragment_availability(username: str) -> bool:
-    """الفحص عبر Fragment"""
     try:
         url = f"https://fragment.com/username/{username}"
         headers = {"User-Agent": "Mozilla/5.0"}
@@ -86,7 +83,7 @@ def check_fragment_availability(username: str) -> bool:
 def hunt_usernames(chat_id):
     global is_scanning
     
-    bot.send_message(chat_id, "🚀 **بدأ الصيد الثلاثي!**\nالآن البوت يفحص: (API) + (t.me) + (Fragment) لضمان دقة 100%.\nالتأخير: 5 ثواني بين كل فحص.\nلإيقاف الصيد أرسل /stop", parse_mode="Markdown")
+    bot.send_message(chat_id, "🚀 **بدأ الصيد الثلاثي!**\nالآن البوت يفحص: (API) + (t.me) + (Fragment).\nالتأخير: 5 ثواني بين كل فحص.\nلإيقاف الصيد أرسل /stop", parse_mode="Markdown")
     
     found_count = 0
     checked_count = 0
@@ -97,11 +94,9 @@ def hunt_usernames(chat_id):
             
         checked_count += 1
         
-        # الفحص الثلاثي
         is_free_tg_api = check_telegram_api(username)
         is_free_tme_web = check_tme_web(username)
         
-        # إذا كان متاح في الاثنين، نفحص Fragment
         if is_free_tg_api and is_free_tme_web:
             if check_fragment_availability(username):
                 found_count += 1
@@ -120,14 +115,12 @@ def hunt_usernames(chat_id):
                 except Exception as e:
                     print(f"Error sending message: {e}")
         
-        # إرسال تحديث كل 20 فحص
         if checked_count % 20 == 0:
             try:
-                bot.send_message(chat_id, f"⏳ جاري الصيد الثلاثي...\nتم فحص: {checked_count} يوزر.\nتم صيد: {found_count} يوزر.\n(آخر يوزر: `{username}`)", parse_mode="Markdown")
+                bot.send_message(chat_id, f"⏳ جاري الصيد...\nتم فحص: {checked_count} يوزر.\nتم صيد: {found_count} يوزر.\n(آخر يوزر: `{username}`)", parse_mode="Markdown")
             except:
                 pass
                 
-        # التأخير 5 ثواني
         time.sleep(5)
 
     bot.send_message(chat_id, "🛑 تم إيقاف عملية الصيد.")
@@ -156,11 +149,22 @@ def main_menu():
 
 @bot.message_handler(commands=['start'])
 def send_welcome(message):
+    # التحقق من أن المستخدم هو الأدمن
+    if message.from_user.id != ADMIN_ID:
+        bot.send_message(message.chat.id, "⛔ عذراً، هذا البوت خاص ومغلق للاستخدام الشخصي.")
+        return
+        
     text, kb = main_menu()
     bot.send_message(message.chat.id, text, parse_mode="Markdown", reply_markup=kb)
 
+# --- أوامر التحكم بالصيد ---
 @bot.callback_query_handler(func=lambda call: call.data == "start_hunt")
 def start_hunt(call):
+    # التحقق من أن الضاغط هو الأدمن
+    if call.from_user.id != ADMIN_ID:
+        bot.answer_callback_query(call.id, "⛔ هذا البوت خاص!", show_alert=True)
+        return
+        
     global is_scanning, scan_thread
     if is_scanning:
         bot.answer_callback_query(call.id, "البوت يعمل بالفعل!", show_alert=True)
@@ -175,6 +179,10 @@ def start_hunt(call):
 
 @bot.callback_query_handler(func=lambda call: call.data == "stop_hunt")
 def stop_hunt(call):
+    if call.from_user.id != ADMIN_ID:
+        bot.answer_callback_query(call.id, "⛔ هذا البوت خاص!", show_alert=True)
+        return
+        
     global is_scanning
     is_scanning = False
     bot.answer_callback_query(call.id, "تم إيقاف الصيد.")
@@ -182,6 +190,9 @@ def stop_hunt(call):
 
 @bot.message_handler(commands=['stop'])
 def stop_command(message):
+    if message.from_user.id != ADMIN_ID:
+        return
+        
     global is_scanning
     is_scanning = False
     bot.reply_to(message, "🛑 تم إرسال أمر الإيقاف...")
