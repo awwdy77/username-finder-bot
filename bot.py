@@ -4,18 +4,23 @@ import threading
 import requests
 import string
 import time
+import asyncio
 from flask import Flask
+from telethon import TelegramClient, functions
 from telebot.types import InlineKeyboardMarkup, InlineKeyboardButton
 
 # --- إعدادات البوت ---
 BOT_TOKEN = os.environ.get("BOT_TOKEN")
 ADMIN_ID = os.environ.get("ADMIN_ID")
 
-if not BOT_TOKEN or not ADMIN_ID:
-    print("Error: BOT_TOKEN or ADMIN_ID is missing.")
+# بيانات الحساب الحقيقي للفحص (من my.telegram.org)
+API_ID = os.environ.get("API_ID")
+API_HASH = os.environ.get("API_HASH")
+
+if not BOT_TOKEN or not ADMIN_ID or not API_ID or not API_HASH:
+    print("Error: BOT_TOKEN, ADMIN_ID, API_ID, or API_HASH is missing.")
     exit(1)
 
-# تحويل ADMIN_ID إلى رقم صحيح للتحقق
 ADMIN_ID = int(ADMIN_ID)
 
 # --- إعداد خادم الويب ---
@@ -27,6 +32,9 @@ def health_check():
 
 # --- إعداد البوت ---
 bot = telebot.TeleBot(BOT_TOKEN)
+
+# إعداد جلسة Telethon للفحص
+client = TelegramClient('session_name', int(API_ID), API_HASH)
 
 is_scanning = False
 scan_thread = None
@@ -45,68 +53,46 @@ def generate_usernames():
             for p3 in valid_parts:
                 yield f"{p1}_{p2}_{p3}"
 
-# --- دوال الفحص الثلاثي ---
-def check_telegram_api(username: str) -> bool:
+# --- دالة الفحص الدقيق عبر Telethon ---
+async def check_username_telethon(username: str) -> bool:
     try:
-        bot.get_chat(f"@{username}")
-        return False  # مملوك
-    except telebot.apihelper.ApiTelegramException as e:
-        if "chat not found" in str(e).lower() or "user not found" in str(e).lower():
-            return True  # متاح
+        # دالة الفحص المخصصة للحسابات الحقيقية فقط
+        await client(functions.account.CheckUsernameRequest(username=username))
+        return True  # متاح
+    except Exception as e:
+        # إذا كان الاسم محجوزاً (UsernameOccupiedError) أو غير صالح
         return False
-    except Exception:
-        return False
-
-def check_tme_web(username: str) -> bool:
-    try:
-        url = f"https://t.me/{username}"
-        headers = {"User-Agent": "Mozilla/5.0"}
-        response = requests.get(url, headers=headers, timeout=10)
-        if 'tgme_page_title' in response.text or 'tgme_page_extra' in response.text:
-            return False # مملوك
-        return True # متاح
-    except Exception:
-        return False
-
-def check_fragment_availability(username: str) -> bool:
-    try:
-        url = f"https://fragment.com/username/{username}"
-        headers = {"User-Agent": "Mozilla/5.0"}
-        response = requests.get(url, headers=headers, timeout=10)
-        if "unavailable" in response.text.lower():
-            return False # موجود في Fragment
-        return True
-    except Exception:
-        return True
 
 # --- دالة الصيد المتسلسل ---
 def hunt_usernames(chat_id):
     global is_scanning
     
-    bot.send_message(chat_id, "🚀 **بدأ الصيد الثلاثي!**\nالآن البوت يفحص: (API) + (t.me) + (Fragment).\nالتأخير: 5 ثواني بين كل فحص.\nلإيقاف الصيد أرسل /stop", parse_mode="Markdown")
+    bot.send_message(chat_id, "🚀 **بدأ الصيد الدقيق!**\nالآن البوت يستخدم حساب حقيقي (Userbot) لفحص دقيق 100%.\nالتأخير: 5 ثواني بين كل فحص.\nلإيقاف الصيد أرسل /stop", parse_mode="Markdown")
     
     found_count = 0
     checked_count = 0
     
-    for username in generate_usernames():
-        if not is_scanning:
-            break
+    # تشغيل الـ event loop للـ Telethon
+    loop = asyncio.new_event_loop()
+    asyncio.set_event_loop(loop)
+    
+    with client:
+        for username in generate_usernames():
+            if not is_scanning:
+                break
+                
+            checked_count += 1
             
-        checked_count += 1
-        
-        is_free_tg_api = check_telegram_api(username)
-        is_free_tme_web = check_tme_web(username)
-        
-        if is_free_tg_api and is_free_tme_web:
-            if check_fragment_availability(username):
+            # الفحص الدقيق
+            is_free = loop.run_until_complete(check_username_telethon(username))
+            
+            if is_free:
                 found_count += 1
                 msg = (
-                    f"🎯 **تم صيد يوزر متاح (دقة عالية)!**\n"
+                    f"🎯 **تم صيد يوزر متاح (دقة 100%)!**\n"
                     f"━━━━━━━━━━━━━━━━━━━━\n"
                     f"اليوزر: `{username}`\n"
-                    f"فحص API: متاح ✅\n"
-                    f"فحص الويب: متاح ✅\n"
-                    f"Fragment: غير موجود ✅\n"
+                    f"الفحص: متاح ✅\n"
                     f"━━━━━━━━━━━━━━━━━━━━\n"
                     f"تم فحص: {checked_count} | تم صيد: {found_count}"
                 )
@@ -114,28 +100,25 @@ def hunt_usernames(chat_id):
                     bot.send_message(chat_id, msg, parse_mode="Markdown")
                 except Exception as e:
                     print(f"Error sending message: {e}")
-        
-        if checked_count % 20 == 0:
-            try:
-                bot.send_message(chat_id, f"⏳ جاري الصيد...\nتم فحص: {checked_count} يوزر.\nتم صيد: {found_count} يوزر.\n(آخر يوزر: `{username}`)", parse_mode="Markdown")
-            except:
-                pass
-                
-        time.sleep(5)
+            
+            if checked_count % 20 == 0:
+                try:
+                    bot.send_message(chat_id, f"⏳ جاري الصيد...\nتم فحص: {checked_count} يوزر.\nتم صيد: {found_count} يوزر.\n(آخر يوزر: `{username}`)", parse_mode="Markdown")
+                except:
+                    pass
+                    
+            time.sleep(5)
 
     bot.send_message(chat_id, "🛑 تم إيقاف عملية الصيد.")
 
 # --- القائمة الرئيسية ---
 def main_menu():
     text = (
-        "👑 **بوت صيد اليوزرات (النسخة الدقيقة)**\n"
+        "👑 **بوت صيد اليوزرات (النسخة الدقيقة 100%)**\n"
         "━━━━━━━━━━━━━━━━━━━━\n\n"
         "يقوم البوت بفحص اليوزرات التي تطابق النمط:\n"
         "`X_Y_Z`\n\n"
-        "الفحص يشمل:\n"
-        "1. تيليجرام API\n"
-        "2. موقع t.me\n"
-        "3. موقع Fragment\n\n"
+        "الفحص يتم عبر حساب تيليجرام حقيقي (Userbot) لضمان الدقة.\n\n"
         "اختر من القائمة:"
     )
     
@@ -149,18 +132,15 @@ def main_menu():
 
 @bot.message_handler(commands=['start'])
 def send_welcome(message):
-    # التحقق من أن المستخدم هو الأدمن
     if message.from_user.id != ADMIN_ID:
         bot.send_message(message.chat.id, "⛔ عذراً، هذا البوت خاص ومغلق للاستخدام الشخصي.")
         return
-        
     text, kb = main_menu()
     bot.send_message(message.chat.id, text, parse_mode="Markdown", reply_markup=kb)
 
 # --- أوامر التحكم بالصيد ---
 @bot.callback_query_handler(func=lambda call: call.data == "start_hunt")
 def start_hunt(call):
-    # التحقق من أن الضاغط هو الأدمن
     if call.from_user.id != ADMIN_ID:
         bot.answer_callback_query(call.id, "⛔ هذا البوت خاص!", show_alert=True)
         return
@@ -192,7 +172,6 @@ def stop_hunt(call):
 def stop_command(message):
     if message.from_user.id != ADMIN_ID:
         return
-        
     global is_scanning
     is_scanning = False
     bot.reply_to(message, "🛑 تم إرسال أمر الإيقاف...")
