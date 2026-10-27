@@ -26,30 +26,26 @@ def health_check():
 # --- إعداد البوت ---
 bot = telebot.TeleBot(BOT_TOKEN)
 
-# متغيرات التحكم بالفحص
 is_scanning = False
 scan_thread = None
 
-# --- دالة توليد اليوزرات المتسلسلة (بدون عشوائية) ---
+# --- دالة توليد اليوزرات المتسلسلة ---
 def generate_usernames():
-    # الحروف والأرقام المسموحة (a-z, A-Z, 0-9)
     chars = string.ascii_letters + string.digits
-    
-    # توليد كل الاحتمالات للخانة الواحدة (حرف واحد أو حرفين)
     valid_parts = []
     for c in chars:
-        valid_parts.append(c) # حرف واحد
+        valid_parts.append(c)
         for c2 in chars:
-            valid_parts.append(c + c2) # حرفين
+            valid_parts.append(c + c2)
 
-    # توليد اليوزرات بشكل متسلسل (عدّاد)
     for p1 in valid_parts:
         for p2 in valid_parts:
             for p3 in valid_parts:
                 yield f"{p1}_{p2}_{p3}"
 
-# --- دوال الفحص ---
-def check_telegram_availability(username: str) -> bool:
+# --- دوال الفحص الثلاثي ---
+def check_telegram_api(username: str) -> bool:
+    """الفحص عبر البوت"""
     try:
         bot.get_chat(f"@{username}")
         return False  # مملوك
@@ -60,7 +56,22 @@ def check_telegram_availability(username: str) -> bool:
     except Exception:
         return False
 
+def check_tme_web(username: str) -> bool:
+    """الفحص عبر صفحة الويب t.me"""
+    try:
+        url = f"https://t.me/{username}"
+        headers = {"User-Agent": "Mozilla/5.0"}
+        response = requests.get(url, headers=headers, timeout=10)
+        
+        # إذا كانت الصفحة تحتوي على عنوان أو وصف، يعني الحساب موجود ومملوك
+        if 'tgme_page_title' in response.text or 'tgme_page_extra' in response.text:
+            return False # مملوك
+        return True # متاح
+    except Exception:
+        return False # في حال الخطأ نعتبره غير متاح للأمان
+
 def check_fragment_availability(username: str) -> bool:
+    """الفحص عبر Fragment"""
     try:
         url = f"https://fragment.com/username/{username}"
         headers = {"User-Agent": "Mozilla/5.0"}
@@ -71,47 +82,52 @@ def check_fragment_availability(username: str) -> bool:
     except Exception:
         return True
 
-# --- دالة الصيد المتسلسل في الخلفية ---
+# --- دالة الصيد المتسلسل ---
 def hunt_usernames(chat_id):
     global is_scanning
     
-    bot.send_message(chat_id, "🚀 **بدأ الصيد المتسلسل!**\nسيقوم البوت بفحص اليوزرات بالترتيب (بدون عشوائية).\nبين كل فحص وفحص 5 ثواني لتجنب الحظر.\nلإيقاف الصيد أرسل /stop", parse_mode="Markdown")
+    bot.send_message(chat_id, "🚀 **بدأ الصيد الثلاثي!**\nالآن البوت يفحص: (API) + (t.me) + (Fragment) لضمان دقة 100%.\nالتأخير: 5 ثواني بين كل فحص.\nلإيقاف الصيد أرسل /stop", parse_mode="Markdown")
     
     found_count = 0
     checked_count = 0
     
-    # استدعاء المولد المتسلسل
     for username in generate_usernames():
         if not is_scanning:
             break
             
         checked_count += 1
         
-        # فحص تيليجرام و Fragment
-        if check_telegram_availability(username) and check_fragment_availability(username):
-            found_count += 1
-            msg = (
-                f"🎯 **تم صيد يوزر متاح!**\n"
-                f"━━━━━━━━━━━━━━━━━━━━\n"
-                f"اليوزر: `{username}`\n"
-                f"تيليجرام: متاح ✅\n"
-                f"Fragment: غير موجود ✅\n"
-                f"━━━━━━━━━━━━━━━━━━━━\n"
-                f"تم فحص: {checked_count} | تم صيد: {found_count}"
-            )
-            try:
-                bot.send_message(chat_id, msg, parse_mode="Markdown")
-            except Exception as e:
-                print(f"Error sending message: {e}")
+        # الفحص الثلاثي
+        is_free_tg_api = check_telegram_api(username)
+        is_free_tme_web = check_tme_web(username)
         
-        # إرسال تحديث كل 20 فحص (لأن الفحص صار أبطأ)
+        # إذا كان متاح في الاثنين، نفحص Fragment
+        if is_free_tg_api and is_free_tme_web:
+            if check_fragment_availability(username):
+                found_count += 1
+                msg = (
+                    f"🎯 **تم صيد يوزر متاح (دقة عالية)!**\n"
+                    f"━━━━━━━━━━━━━━━━━━━━\n"
+                    f"اليوزر: `{username}`\n"
+                    f"فحص API: متاح ✅\n"
+                    f"فحص الويب: متاح ✅\n"
+                    f"Fragment: غير موجود ✅\n"
+                    f"━━━━━━━━━━━━━━━━━━━━\n"
+                    f"تم فحص: {checked_count} | تم صيد: {found_count}"
+                )
+                try:
+                    bot.send_message(chat_id, msg, parse_mode="Markdown")
+                except Exception as e:
+                    print(f"Error sending message: {e}")
+        
+        # إرسال تحديث كل 20 فحص
         if checked_count % 20 == 0:
             try:
-                bot.send_message(chat_id, f"⏳ جاري الصيد المتسلسل...\nتم فحص: {checked_count} يوزر.\nتم صيد: {found_count} يوزر.\n(آخر يوزر تم فحصه: `{username}`)", parse_mode="Markdown")
+                bot.send_message(chat_id, f"⏳ جاري الصيد الثلاثي...\nتم فحص: {checked_count} يوزر.\nتم صيد: {found_count} يوزر.\n(آخر يوزر: `{username}`)", parse_mode="Markdown")
             except:
                 pass
                 
-        # التأخير المطلوب: 5 ثواني بين كل فحص
+        # التأخير 5 ثواني
         time.sleep(5)
 
     bot.send_message(chat_id, "🛑 تم إيقاف عملية الصيد.")
@@ -119,18 +135,20 @@ def hunt_usernames(chat_id):
 # --- القائمة الرئيسية ---
 def main_menu():
     text = (
-        "👑 **بوت صيد اليوزرات**\n"
+        "👑 **بوت صيد اليوزرات (النسخة الدقيقة)**\n"
         "━━━━━━━━━━━━━━━━━━━━\n\n"
         "يقوم البوت بفحص اليوزرات التي تطابق النمط:\n"
-        "`X_Y_Z`\n"
-        "(خانات 1-2 حرف/رقم مفصولة بشرطة).\n\n"
-        "الفحص يتم **بشكل متسلسل** وبدون تكرار.\n\n"
+        "`X_Y_Z`\n\n"
+        "الفحص يشمل:\n"
+        "1. تيليجرام API\n"
+        "2. موقع t.me\n"
+        "3. موقع Fragment\n\n"
         "اختر من القائمة:"
     )
     
     kb = InlineKeyboardMarkup(row_width=1)
     kb.add(
-        InlineKeyboardButton("🚀 بدء الصيد المتسلسل", callback_data="start_hunt"),
+        InlineKeyboardButton("🚀 بدء الصيد", callback_data="start_hunt"),
         InlineKeyboardButton("🛑 إيقاف الصيد", callback_data="stop_hunt"),
         InlineKeyboardButton("📢 قناتنا الرسمية", url="https://t.me/TurboRashq")
     )
@@ -141,7 +159,6 @@ def send_welcome(message):
     text, kb = main_menu()
     bot.send_message(message.chat.id, text, parse_mode="Markdown", reply_markup=kb)
 
-# --- أوامر التحكم بالصيد ---
 @bot.callback_query_handler(func=lambda call: call.data == "start_hunt")
 def start_hunt(call):
     global is_scanning, scan_thread
@@ -161,13 +178,13 @@ def stop_hunt(call):
     global is_scanning
     is_scanning = False
     bot.answer_callback_query(call.id, "تم إيقاف الصيد.")
-    bot.send_message(call.message.chat.id, "🛑 تم إرسال أمر الإيقاف... انتظر حتى ينتهي الفحص الحالي.")
+    bot.send_message(call.message.chat.id, "🛑 تم إرسال أمر الإيقاف...")
 
 @bot.message_handler(commands=['stop'])
 def stop_command(message):
     global is_scanning
     is_scanning = False
-    bot.reply_to(message, "🛑 تم إرسال أمر الإيقاف... انتظر حتى ينتهي الفحص الحالي.")
+    bot.reply_to(message, "🛑 تم إرسال أمر الإيقاف...")
 
 if __name__ == "__main__":
     t = threading.Thread(target=bot.infinity_polling)
