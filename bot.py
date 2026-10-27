@@ -7,21 +7,22 @@ import time
 import asyncio
 from flask import Flask
 from telethon import TelegramClient, functions
+from telethon.errors import UsernameOccupiedError, UsernameInvalidError
 from telebot.types import InlineKeyboardMarkup, InlineKeyboardButton
 
 # --- إعدادات البوت ---
 BOT_TOKEN = os.environ.get("BOT_TOKEN")
 ADMIN_ID = os.environ.get("ADMIN_ID")
 
-# بيانات الحساب الحقيقي للفحص (من my.telegram.org)
-API_ID = os.environ.get("API_ID")
-API_HASH = os.environ.get("API_HASH")
-
-if not BOT_TOKEN or not ADMIN_ID or not API_ID or not API_HASH:
-    print("Error: BOT_TOKEN, ADMIN_ID, API_ID, or API_HASH is missing.")
+if not BOT_TOKEN or not ADMIN_ID:
+    print("Error: BOT_TOKEN or ADMIN_ID is missing.")
     exit(1)
 
 ADMIN_ID = int(ADMIN_ID)
+
+# --- قيم Telegram Desktop الثابتة ---
+API_ID = 2040
+API_HASH = "b18441a1ff607e10a989891a5462e627"
 
 # --- إعداد خادم الويب ---
 app = Flask(__name__)
@@ -34,7 +35,7 @@ def health_check():
 bot = telebot.TeleBot(BOT_TOKEN)
 
 # إعداد جلسة Telethon للفحص
-client = TelegramClient('session_name', int(API_ID), API_HASH)
+client = TelegramClient('session_name', API_ID, API_HASH)
 
 is_scanning = False
 scan_thread = None
@@ -59,8 +60,11 @@ async def check_username_telethon(username: str) -> bool:
         # دالة الفحص المخصصة للحسابات الحقيقية فقط
         await client(functions.account.CheckUsernameRequest(username=username))
         return True  # متاح
+    except (UsernameOccupiedError, UsernameInvalidError):
+        # إذا كان الاسم محجوزاً أو غير صالح
+        return False
     except Exception as e:
-        # إذا كان الاسم محجوزاً (UsernameOccupiedError) أو غير صالح
+        print(f"Error checking {username}: {e}")
         return False
 
 # --- دالة الصيد المتسلسل ---
